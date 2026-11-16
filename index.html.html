@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Cadenas de Markov: Movilidad Urbana</title>
+    <meta name="author" content="Andrés León Morelos">
+    <meta name="copyright" content="© 2026 Andrés León Morelos">
+    <!-- Carga de Tailwind CSS para diseño responsivo y moderno -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carga de Chart.js para la visualización de la evolución temporal -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Fuente Inter y JetBrains Mono para rigor académico y numérico -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .font-mono-num {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Estilo personalizado para corchetes matriciales */
+        .matrix-bracket {
+            position: relative;
+            padding: 0.75rem 1rem;
+        }
+        .matrix-bracket::before,
+        .matrix-bracket::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 10px;
+            border: 2.5px solid #1e293b;
+        }
+        .matrix-bracket::before {
+            left: 0;
+            border-right: none;
+            border-top-left-radius: 6px;
+            border-bottom-left-radius: 6px;
+        }
+        .matrix-bracket::after {
+            right: 0;
+            border-left: none;
+            border-top-right-radius: 6px;
+            border-bottom-right-radius: 6px;
+        }
+        /* Ocultar flechas de inputs numéricos en algunos navegadores para limpieza visual */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Encabezado Académico -->
+    <header class="bg-slate-900 text-white border-b border-slate-800 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400 mb-1">
+                        <span>Álgebra Lineal • Cadenas de Markov en Tiempo Discreto</span>
+                    </div>
+                    <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-white">
+                        Simulador de Cadenas de Markov: Movilidad Urbana
+                    </h1>
+                    <p class="text-sm text-slate-300 mt-1">
+                        Transformación lineal <span class="font-mono-num text-sky-300">x<sub>k+1</sub> = P · x<sub>k</sub></span> y cálculo numérico del vector de estado estacionario <span class="font-mono-num text-sky-300">x* ∈ ker(P - I)</span>
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button id="btn-restaurar" type="button"
+                        class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white text-sm font-medium transition shadow-sm cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        Restaurar Caso Base (3×3)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Contenido Principal -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Barra de Configuración y Alertas de Validación -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-5">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <!-- Selector de Dimensión N -->
+                <div class="flex flex-wrap items-center gap-3">
+                    <label for="select-dim" class="text-sm font-semibold text-slate-700">
+                        Dimensión del sistema (<span class="font-mono-num">N × N</span>):
+                    </label>
+                    <select id="select-dim"
+                        class="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        <option value="2">2 × 2 (2 Estados)</option>
+                        <option value="3" selected>3 × 3 (Caso del Reporte)</option>
+                        <option value="4">4 × 4 (4 Estados)</option>
+                        <option value="5">5 × 5 (5 Estados)</option>
+                    </select>
+                    <span class="text-xs text-slate-500">
+                        Tolerancia de convergencia: <span class="font-mono-num font-semibold text-slate-700">ε = 1.0 × 10⁻⁶</span> | Máx. iteraciones: <span class="font-mono-num font-semibold text-slate-700">1000</span>
+                    </span>
+                </div>
+
+                <!-- Indicador de Estado de Validación -->
+                <div id="validation-badge" class="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    <svg class="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span>Matriz estocástica válida y vector inicial normalizado.</span>
+                </div>
+            </div>
+
+            <!-- Contenedor de mensajes de error detallados si los hay -->
+            <div id="validation-errors" class="hidden mt-3 p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-sm space-y-1">
+            </div>
+        </section>
+
+        <!-- Sección de Entrada: Matriz de Transición P y Vector Inicial x0 -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Tarjeta Matriz de Transición P -->
+            <div class="lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between">
+                <div>
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900">1. Matriz de Transición Estocástica (<span class="font-mono-num">P</span>)</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">
+                                Cada entrada <span class="font-mono-num">p<sub>ij</sub></span> representa la probabilidad mensual de pasar del estado <span class="font-mono-num">j</span> (columna) al estado <span class="font-mono-num">i</span> (fila). Cada columna debe sumar <span class="font-mono-num font-semibold">1.0</span>.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Tabla Matricial con Scroll Horizontal Responsivo -->
+                    <div class="overflow-x-auto pb-2">
+                        <div class="inline-block min-w-full align-middle">
+                            <div id="matrix-container" class="matrix-bracket inline-block bg-slate-50/60 rounded-lg">
+                                <!-- Se genera dinámicamente desde JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Leyenda de Estados -->
+                <div id="states-legend" class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-3 text-xs text-slate-600">
+                    <!-- Se genera dinámicamente desde JS -->
+                </div>
+            </div>
+
+            <!-- Tarjeta Vector Inicial x0 -->
+            <div class="lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-base font-bold text-slate-900">2. Vector de Estado Inicial (<span class="font-mono-num">x₀</span>)</h2>
+                    <p class="text-xs text-slate-500 mt-0.5 mb-4">
+                        Proporción inicial de usuarios en el mes <span class="font-mono-num">k = 0</span>. La suma total debe ser <span class="font-mono-num font-semibold">1.0</span> (100%).
+                    </p>
+
+                    <div class="flex items-center justify-center py-2">
+                        <div id="vector-container" class="matrix-bracket bg-slate-50/60 rounded-lg">
+                            <!-- Se genera dinámicamente desde JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Suma del Vector Inicial -->
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-sm">
+                    <span class="font-medium text-slate-600">Suma total <span class="font-mono-num">∑ x<sub>i,0</sub></span>:</span>
+                    <span id="x0-sum-display" class="font-mono-num font-bold px-2.5 py-1 rounded bg-emerald-100 text-emerald-800">
+                        1.0000
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección de Resultados Numéricos y Comparación Analítica -->
+        <section id="results-section" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- KPIs de Convergencia y Vector Estacionario -->
+            <div class="lg:col-span-5 bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between space-y-5">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-base font-bold text-slate-900">3. Vector de Estado Estacionario (<span class="font-mono-num">x*</span>)</h2>
+                        <span id="convergence-pill" class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-100 text-sky-800">
+                            Convergencia: Mes 18
+                        </span>
+                    </div>
+
+                    <p class="text-xs text-slate-500 mb-4">
+                        Distribución límite cuando <span class="font-mono-num">‖x<sub>k</sub> - x<sub>k-1</sub>‖₂ ≤ 10⁻⁶</span>. El sistema alcanza el equilibrio invariante <span class="font-mono-num">P·x* = x*</span>.
+                    </p>
+
+                    <!-- Tarjetas de cada componente del vector estacionario -->
+                    <div id="steady-state-cards" class="space-y-2.5">
+                        <!-- Se genera dinámicamente desde JS -->
+                    </div>
+                </div>
+
+                <!-- Bloque de Comparación Analítica Exacta (Visible cuando se usa el caso base 3x3) -->
+                <div id="analytical-comparison" class="rounded-lg bg-slate-900 text-slate-100 p-4 border border-slate-800">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-sky-400">Validación Analítica Exacta (Reporte)</span>
+                        <span class="font-mono-num text-xs text-emerald-400">ker(P - I)</span>
+                    </div>
+                    <p class="text-xs text-slate-300 leading-relaxed mb-2.5">
+                        Para el caso base, los valores propios son <span class="font-mono-num text-white">λ₁ = 1, λ₂ = 0.5, λ₃ = 0.3</span> y la base normalizada del espacio nulo es:
+                    </p>
+                    <div class="grid grid-cols-3 gap-2 text-center font-mono-num text-xs bg-slate-800/90 rounded-lg p-2.5 border border-slate-700">
+                        <div>
+                            <div class="text-slate-400 text-[11px]">x₁* (Masivo)</div>
+                            <div class="text-sky-300 font-semibold mt-0.5">16/35</div>
+                            <div class="text-slate-300 text-[11px]">0.457143</div>
+                        </div>
+                        <div>
+                            <div class="text-slate-400 text-[11px]">x₂* (Alim.)</div>
+                            <div class="text-emerald-300 font-semibold mt-0.5">2/7</div>
+                            <div class="text-slate-300 text-[11px]">0.285714</div>
+                        </div>
+                        <div>
+                            <div class="text-slate-400 text-[11px]">x₃* (Part.)</div>
+                            <div class="text-amber-300 font-semibold mt-0.5">9/35</div>
+                            <div class="text-slate-300 text-[11px]">0.257143</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráfica Interactiva de Evolución Temporal -->
+            <div class="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900">4. Evolución Temporal de la Población (<span class="font-mono-num">x<sub>k</sub></span>)</h2>
+                        <p class="text-xs text-slate-500 mt-0.5">
+                            Trayectoria de los porcentajes de usuarios por modo de transporte desde <span class="font-mono-num">k = 0</span> hasta la estabilización.
+                        </p>
+                    </div>
+                </div>
+                <div class="relative flex-grow min-h-[290px] w-full">
+                    <canvas id="markovChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tabla Detallada de Iteraciones -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                <div>
+                    <h2 class="text-base font-bold text-slate-900">5. Registro Detallado de Iteraciones (<span class="font-mono-num">x<sub>k+1</sub> = P · x<sub>k</sub></span>)</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                        Valores calculados en cada mes <span class="font-mono-num">k</span> y norma euclidiana del cambio <span class="font-mono-num">‖Δx‖₂ = ‖x<sub>k</sub> - x<sub>k-1</sub>‖₂</span>.
+                    </p>
+                </div>
+                <div class="text-xs font-mono-num text-slate-500" id="table-summary">
+                    Mostrando 19 estados (Mes 0 a Mes 18)
+                </div>
+            </div>
+
+            <div class="overflow-x-auto max-h-[380px] rounded-lg border border-slate-200">
+                <table class="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead id="iterations-thead" class="bg-slate-900 text-white sticky top-0 z-10">
+                        <!-- Generado dinámicamente -->
+                    </thead>
+                    <tbody id="iterations-tbody" class="divide-y divide-slate-200 bg-white font-mono-num text-xs sm:text-sm">
+                        <!-- Generado dinámicamente -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Pie de Página con Créditos de Autoría y Derechos de Autor -->
+    <footer class="bg-white border-t border-slate-200 mt-8 py-5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-600">
+            <div class="text-center sm:text-left">
+                <p class="font-semibold text-slate-800">© 2026 Andrés León Morelos. Todos los derechos reservados.</p>
+                <p class="text-slate-500 mt-0.5">Desarrollado para la asignatura de Álgebra Lineal — Facultad de Ingeniería, UNAM.</p>
+            </div>
+            <span class="font-mono-num text-slate-400">Simulación numérica en doble precisión (IEEE 754)</span>
+        </div>
+    </footer>
+
+    <!-- Lógica Matemática y Control de Interfaz -->
+    <script>
+        // Constantes matemáticas idénticas al código en C del reporte
+        const TOLERANCIA = 1e-6;
+        const MAX_ITER = 1000;
+
+        // Datos por defecto del caso de estudio documentado (3x3)
+        const CASO_BASE_P = [
+            [0.7, 0.3, 0.2],
+            [0.2, 0.5, 0.2],
+            [0.1, 0.2, 0.6]
+        ];
+        const CASO_BASE_X0 = [0.20, 0.50, 0.30];
+
+        // Etiquetas y colores por estado
+        const NOMBRES_ESTADOS_BASE = [
+            "Transporte Masivo (E₁)",
+            "Transporte Alimentador (E₂)",
+            "Vehículo Particular (E₃)",
+            "Bicicleta / Micromovilidad (E₄)",
+            "Transporte Multimodal (E₅)"
+        ];
+
+        const COLORES_ESTADOS = [
+            { border: "#0284c7", bg: "rgba(2, 132, 199, 0.12)", badge: "bg-sky-100 text-sky-800 border-sky-200", bar: "bg-sky-600" },
+            { border: "#059669", bg: "rgba(5, 150, 105, 0.12)", badge: "bg-emerald-100 text-emerald-800 border-emerald-200", bar: "bg-emerald-600" },
+            { border: "#d97706", bg: "rgba(217, 119, 6, 0.12)", badge: "bg-amber-100 text-amber-800 border-amber-200", bar: "bg-amber-500" },
+            { border: "#7c3aed", bg: "rgba(124, 58, 237, 0.12)", badge: "bg-violet-100 text-violet-800 border-violet-200", bar: "bg-violet-600" },
+            { border: "#e11d48", bg: "rgba(225, 29, 72, 0.12)", badge: "bg-rose-100 text-rose-800 border-rose-200", bar: "bg-rose-600" }
+        ];
+
+        // Estado global de la aplicación
+        let dimensionN = 3;
+        let matrizP = [];
+        let vectorX0 = [];
+        let chartInstance = null;
+
+        // Referencias al DOM
+        const selectDim = document.getElementById("select-dim");
+        const btnRestaurar = document.getElementById("btn-restaurar");
+        const matrixContainer = document.getElementById("matrix-container");
+        const vectorContainer = document.getElementById("vector-container");
+        const statesLegend = document.getElementById("states-legend");
+        const x0SumDisplay = document.getElementById("x0-sum-display");
+        const validationBadge = document.getElementById("validation-badge");
+        const validationErrors = document.getElementById("validation-errors");
+        const convergencePill = document.getElementById("convergence-pill");
+        const steadyStateCards = document.getElementById("steady-state-cards");
+        const analyticalComparison = document.getElementById("analytical-comparison");
+        const iterationsThead = document.getElementById("iterations-thead");
+        const iterationsTbody = document.getElementById("iterations-tbody");
+        const tableSummary = document.getElementById("table-summary");
+
+        /**
+         * Inicializa los arreglos P y x0 con los valores del caso base (N=3)
+         * o genera una matriz estocástica válida por defecto para otras dimensiones.
+         */
+        function inicializarModelo(n) {
+            dimensionN = n;
+            selectDim.value = String(n);
+
+            if (n === 3) {
+                matrizP = CASO_BASE_P.map(fila => [...fila]);
+                vectorX0 = [...CASO_BASE_X0];
+            } else {
+                // Generar matriz estocástica equilibrada por defecto para N != 3
+                matrizP = Array.from({ length: n }, (_, i) =>
+                    Array.from({ length: n }, (_, j) => {
+                        if (i === j) return Number((0.60).toFixed(2));
+                        return Number(((0.40) / (n - 1)).toFixed(4));
+                    })
+                );
+                // Ajustar última fila para asegurar suma exacta = 1.0 en cada columna
+                for (let j = 0; j < n; j++) {
+                    let sumaParcial = 0;
+                    for (let i = 0; i < n - 1; i++) sumaParcial += matrizP[i][j];
+                    matrizP[n - 1][j] = Number((1.0 - sumaParcial).toFixed(4));
+                }
+
+                // Vector inicial uniforme
+                vectorX0 = Array.from({ length: n }, () => Number((1.0 / n).toFixed(4)));
+                let sumaX0 = 0;
+                for (let i = 0; i < n - 1; i++) sumaX0 += vectorX0[i];
+                vectorX0[n - 1] = Number((1.0 - sumaX0).toFixed(4));
+            }
+
+            renderizarControlesEntrada();
+            ejecutarYActualizar();
+        }
+
+        /**
+         * Dibuja los inputs editables para la matriz P, el vector x0 y la leyenda de estados.
+         */
+        function renderizarControlesEntrada() {
+            // 1. Construir tabla de la matriz P con encabezados y pie de suma por columna
+            let htmlMatriz = `<table class="border-collapse text-center"><thead><tr>`;
+            htmlMatriz += `<th class="p-1.5 text-[11px] font-semibold text-slate-400">Hacia \\ Desde</th>`;
+            for (let j = 0; j < dimensionN; j++) {
+                htmlMatriz += `<th class="p-1.5 text-xs font-mono-num font-bold text-slate-700">E<sub>${j + 1}</sub></th>`;
+            }
+            htmlMatriz += `</tr></thead><tbody>`;
+
+            for (let i = 0; i < dimensionN; i++) {
+                htmlMatriz += `<tr>`;
+                htmlMatriz += `<td class="pr-2.5 py-1 text-xs font-mono-num font-bold text-slate-700 text-right">E<sub>${i + 1}</sub></td>`;
+                for (let j = 0; j < dimensionN; j++) {
+                    htmlMatriz += `
+                        <td class="p-1">
+                            <input type="number" step="0.01" min="0" max="1"
+                                data-row="${i}" data-col="${j}"
+                                value="${matrizP[i][j]}"
+                                aria-label="Entrada P[${i + 1}][${j + 1}]"
+                                class="input-matriz w-20 sm:w-24 px-2 py-1.5 text-center font-mono-num text-sm rounded-md border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition" />
+                        </td>`;
+                }
+                htmlMatriz += `</tr>`;
+            }
+
+            // Fila inferior con la suma de cada columna
+            htmlMatriz += `<tr class="border-t border-slate-300"><td class="pr-2.5 pt-2 text-[11px] font-semibold text-slate-500 text-right">Suma col:</td>`;
+            for (let j = 0; j < dimensionN; j++) {
+                htmlMatriz += `
+                    <td class="pt-2 px-1">
+                        <span id="col-sum-${j}" class="inline-block w-full py-0.5 px-1.5 rounded text-xs font-mono-num font-bold bg-emerald-100 text-emerald-800">
+                            1.0000
+                        </span>
+                    </td>`;
+            }
+            htmlMatriz += `</tr></tbody></table>`;
+            matrixContainer.innerHTML = htmlMatriz;
+
+            // 2. Construir inputs del vector inicial x0
+            let htmlVector = `<div class="space-y-2 py-1">`;
+            for (let i = 0; i < dimensionN; i++) {
+                htmlVector += `
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-xs font-mono-num font-bold text-slate-600 w-7 text-right">E<sub>${i + 1}</sub>:</span>
+                        <input type="number" step="0.01" min="0" max="1"
+                            data-idx="${i}"
+                            value="${vectorX0[i]}"
+                            aria-label="Componente x0[${i + 1}]"
+                            class="input-vector w-24 px-2.5 py-1.5 text-center font-mono-num text-sm rounded-md border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition" />
+                    </div>`;
+            }
+            htmlVector += `</div>`;
+            vectorContainer.innerHTML = htmlVector;
+
+            // 3. Leyenda de nombres de los estados
+            let htmlLeyenda = "";
+            for (let i = 0; i < dimensionN; i++) {
+                const color = COLORES_ESTADOS[i % COLORES_ESTADOS.length];
+                const nombre = NOMBRES_ESTADOS_BASE[i] || `Estado ${i + 1} (E${i + 1})`;
+                htmlLeyenda += `
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border ${color.badge} font-medium">
+                        <span class="w-2 h-2 rounded-full ${color.bar}"></span>
+                        ${nombre}
+                    </span>`;
+            }
+            statesLegend.innerHTML = htmlLeyenda;
+
+            // Registrar listeners de edición en tiempo real
+            document.querySelectorAll(".input-matriz").forEach(input => {
+                input.addEventListener("input", (e) => {
+                    const r = parseInt(e.target.dataset.row, 10);
+                    const c = parseInt(e.target.dataset.col, 10);
+                    const val = parseFloat(e.target.value);
+                    matrizP[r][c] = Number.isNaN(val) ? 0 : val;
+                    ejecutarYActualizar();
+                });
+            });
+
+            document.querySelectorAll(".input-vector").forEach(input => {
+                input.addEventListener("input", (e) => {
+                    const idx = parseInt(e.target.dataset.idx, 10);
+                    const val = parseFloat(e.target.value);
+                    vectorX0[idx] = Number.isNaN(val) ? 0 : val;
+                    ejecutarYActualizar();
+                });
+            });
+        }
+
+        /**
+         * Verifica si la matriz P es estocástica por columnas y si x0 es un vector de estado válido.
+         */
+        function validarSistema() {
+            const errores = [];
+
+            // Validar columnas de P
+            for (let j = 0; j < dimensionN; j++) {
+                let sumaCol = 0;
+                let tieneNegativo = false;
+
+                for (let i = 0; i < dimensionN; i++) {
+                    const val = matrizP[i][j];
+                    if (val < 0 || Number.isNaN(val)) {
+                        tieneNegativo = true;
+                        errores.push(`Entrada negativa o inválida en P[${i + 1}][${j + 1}].`);
+                    }
+                    sumaCol += val;
+                }
+
+                const badgeCol = document.getElementById(`col-sum-${j}`);
+                if (badgeCol) {
+                    badgeCol.textContent = sumaCol.toFixed(4);
+                    if (!tieneNegativo && Math.abs(sumaCol - 1.0) <= TOLERANCIA) {
+                        badgeCol.className = "inline-block w-full py-0.5 px-1.5 rounded text-xs font-mono-num font-bold bg-emerald-100 text-emerald-800";
+                    } else {
+                        badgeCol.className = "inline-block w-full py-0.5 px-1.5 rounded text-xs font-mono-num font-bold bg-rose-100 text-rose-800";
+                    }
+                }
+
+                if (Math.abs(sumaCol - 1.0) > TOLERANCIA) {
+                    errores.push(`La columna E${j + 1} suma ${sumaCol.toFixed(6)} (debe sumar exactamente 1.0).`);
+                }
+            }
+
+            // Validar vector inicial x0
+            let sumaX0 = 0;
+            for (let i = 0; i < dimensionN; i++) {
+                const val = vectorX0[i];
+                if (val < 0 || Number.isNaN(val)) {
+                    errores.push(`Componente negativa o inválida en x₀[${i + 1}].`);
+                }
+                sumaX0 += val;
+            }
+
+            x0SumDisplay.textContent = sumaX0.toFixed(4);
+            if (Math.abs(sumaX0 - 1.0) <= TOLERANCIA && !errores.some(e => e.includes("x₀"))) {
+                x0SumDisplay.className = "font-mono-num font-bold px-2.5 py-1 rounded bg-emerald-100 text-emerald-800";
+            } else {
+                x0SumDisplay.className = "font-mono-num font-bold px-2.5 py-1 rounded bg-rose-100 text-rose-800";
+            }
+
+            if (Math.abs(sumaX0 - 1.0) > TOLERANCIA) {
+                errores.push(`El vector inicial x₀ suma ${sumaX0.toFixed(6)} (debe sumar exactamente 1.0).`);
+            }
+
+            return errores;
+        }
+
+        /**
+         * Ejecuta el algoritmo iterativo x_{k+1} = P * x_k hasta ||x_k - x_{k-1}||_2 <= TOLERANCIA.
+         */
+        function simularCadenaMarkov() {
+            const historial = [];
+            let xActual = [...vectorX0];
+            let iter = 0;
+            let error = 1.0;
+
+            historial.push({
+                mes: 0,
+                vector: [...xActual],
+                error: null
+            });
+
+            while (error > TOLERANCIA && iter < MAX_ITER) {
+                iter++;
+                const xSiguiente = new Array(dimensionN).fill(0);
+
+                // Producto Matriz-Vector: x_{k+1} = P * x_k
+                for (let i = 0; i < dimensionN; i++) {
+                    let suma = 0;
+                    for (let j = 0; j < dimensionN; j++) {
+                        suma += matrizP[i][j] * xActual[j];
+                    }
+                    xSiguiente[i] = suma;
+                }
+
+                // Norma Euclidiana ||x_{k+1} - x_k||_2
+                let sumaCuadrados = 0;
+                for (let i = 0; i < dimensionN; i++) {
+                    const dif = xSiguiente[i] - xActual[i];
+                    sumaCuadrados += dif * dif;
+                }
+                error = Math.sqrt(sumaCuadrados);
+
+                xActual = xSiguiente;
+                historial.push({
+                    mes: iter,
+                    vector: [...xActual],
+                    error: error
+                });
+            }
+
+            return {
+                historial,
+                iteraciones: iter,
+                estadoFinal: xActual,
+                convergio: error <= TOLERANCIA
+            };
+        }
+
+        /**
+         * Comprueba si los valores actuales coinciden con el caso base documentado en el reporte.
+         */
+        function esCasoBase() {
+            if (dimensionN !== 3) return false;
+            for (let i = 0; i < 3; i++) {
+                if (Math.abs(vectorX0[i] - CASO_BASE_X0[i]) > 1e-9) return false;
+                for (let j = 0; j < 3; j++) {
+                    if (Math.abs(matrizP[i][j] - CASO_BASE_P[i][j]) > 1e-9) return false;
+                }
+            }
+            return true;
+        }
+
+        /**
+         * Orquesta la validación, el cálculo numérico y la actualización de tarjetas, gráfica y tabla.
+         */
+        function ejecutarYActualizar() {
+            const errores = validarSistema();
+
+            if (errores.length > 0) {
+                validationBadge.className = "flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium bg-rose-50 text-rose-800 border border-rose-200";
+                validationBadge.innerHTML = `
+                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span>Condiciones estocásticas incompletas (${errores.length} aviso${errores.length > 1 ? 's' : ''}).</span>`;
+
+                validationErrors.classList.remove("hidden");
+                validationErrors.innerHTML = errores.map(err => `<div>• ${err}</div>`).join("");
+                return;
+            }
+
+            // Sistema válido
+            validationBadge.className = "flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium bg-emerald-50 text-emerald-800 border border-emerald-200";
+            validationBadge.innerHTML = `
+                <svg class="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span>Matriz estocástica válida y vector inicial normalizado.</span>`;
+            validationErrors.classList.add("hidden");
+
+            const resultado = simularCadenaMarkov();
+
+            // Mostrar u ocultar tarjeta de comparación analítica exacta
+            if (esCasoBase()) {
+                analyticalComparison.classList.remove("hidden");
+            } else {
+                analyticalComparison.classList.add("hidden");
+            }
+
+            renderizarEstadoEstacionario(resultado);
+            renderizarGrafica(resultado.historial);
+            renderizarTabla(resultado.historial);
+        }
+
+        /**
+         * Actualiza las tarjetas de resumen del vector estacionario final x*.
+         */
+        function renderizarEstadoEstacionario(resultado) {
+            if (resultado.convergio) {
+                convergencePill.className = "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-100 text-sky-800";
+                convergencePill.textContent = `Convergencia: Mes ${resultado.iteraciones}`;
+            } else {
+                convergencePill.className = "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800";
+                convergencePill.textContent = `Límite alcanzado (${resultado.iteraciones} iter.)`;
+            }
+
+            let html = "";
+            for (let i = 0; i < dimensionN; i++) {
+                const val = resultado.estadoFinal[i];
+                const porcentaje = (val * 100).toFixed(2);
+                const color = COLORES_ESTADOS[i % COLORES_ESTADOS.length];
+                const nombre = NOMBRES_ESTADOS_BASE[i] || `Estado ${i + 1} (E${i + 1})`;
+
+                html += `
+                    <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                        <div class="flex items-center justify-between text-sm mb-1.5">
+                            <span class="font-semibold text-slate-800">${nombre}</span>
+                            <div class="font-mono-num">
+                                <span class="font-bold text-slate-900">${val.toFixed(6)}</span>
+                                <span class="text-xs text-slate-500 ml-1">(${porcentaje}%)</span>
+                            </div>
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                            <div class="${color.bar} h-2 rounded-full transition-all duration-300" style="width: ${Math.min(100, Math.max(0, val * 100))}%"></div>
+                        </div>
+                    </div>`;
+            }
+            steadyStateCards.innerHTML = html;
+        }
+
+        /**
+         * Dibuja o actualiza la gráfica de evolución con Chart.js.
+         */
+        function renderizarGrafica(historial) {
+            const ctx = document.getElementById("markovChart").getContext("2d");
+            const etiquetasX = historial.map(item => `Mes ${item.mes}`);
+
+            const datasets = [];
+            for (let i = 0; i < dimensionN; i++) {
+                const color = COLORES_ESTADOS[i % COLORES_ESTADOS.length];
+                const nombre = NOMBRES_ESTADOS_BASE[i] || `Estado ${i + 1} (E${i + 1})`;
+                datasets.push({
+                    label: nombre,
+                    data: historial.map(item => Number((item.vector[i] * 100).toFixed(4))),
+                    borderColor: color.border,
+                    backgroundColor: color.bg,
+                    borderWidth: 2.5,
+                    pointRadius: historial.length <= 35 ? 3.5 : 1.5,
+                    pointHoverRadius: 5,
+                    tension: 0.25,
+                    fill: false
+                });
+            }
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: etiquetasX,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: "top",
+                            labels: {
+                                usePointStyle: true,
+                                boxWidth: 8,
+                                font: { family: "'Inter', sans-serif", size: 12, weight: "500" }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: "#0f172a",
+                            titleFont: { family: "'Inter', sans-serif", size: 12 },
+                            bodyFont: { family: "'JetBrains Mono', monospace", size: 12 },
+                            callbacks: {
+                                label: function(context) {
+                                    const pct = context.parsed.y.toFixed(2);
+                                    const prop = (context.parsed.y / 100).toFixed(6);
+                                    return `${context.dataset.label}: ${prop} (${pct}%)`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: "Porcentaje de Población (%)",
+                                font: { family: "'Inter', sans-serif", size: 12, weight: "600" },
+                                color: "#475569"
+                            },
+                            ticks: {
+                                callback: value => `${value}%`,
+                                font: { family: "'JetBrains Mono', monospace", size: 11 }
+                            },
+                            grid: { color: "#e2e8f0" }
+                        },
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 12,
+                                font: { family: "'JetBrains Mono', monospace", size: 11 }
+                            },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        /**
+         * Rellena la tabla detallada de iteraciones con los valores numéricos y la norma ||dx||_2.
+         */
+        function renderizarTabla(historial) {
+            tableSummary.textContent = `Mostrando ${historial.length} estados (Mes 0 a Mes ${historial[historial.length - 1].mes})`;
+
+            // Encabezado
+            let headHtml = `<tr>
+                <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Mes (k)</th>`;
+            for (let i = 0; i < dimensionN; i++) {
+                const nombreCorto = NOMBRES_ESTADOS_BASE[i] ? NOMBRES_ESTADOS_BASE[i].split(" (")[0] : `Estado ${i + 1}`;
+                headHtml += `<th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider">${nombreCorto} (x<sub>${i + 1},k</sub>)</th>`;
+            }
+            headHtml += `<th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider">Norma ‖x<sub>k</sub> - x<sub>k-1</sub>‖₂</th></tr>`;
+            iterationsThead.innerHTML = headHtml;
+
+            // Cuerpo de la tabla
+            let bodyHtml = "";
+            historial.forEach((fila, idx) => {
+                const esUltima = idx === historial.length - 1;
+                const rowClass = esUltima ? "bg-sky-50/90 font-semibold text-slate-900" : "hover:bg-slate-50 text-slate-700";
+
+                bodyHtml += `<tr class="${rowClass}">`;
+                bodyHtml += `<td class="px-4 py-2.5 whitespace-nowrap">${fila.mes}${esUltima ? ' <span class="ml-1 text-[10px] uppercase px-1.5 py-0.5 rounded bg-sky-200 text-sky-900">Equilibrio</span>' : ''}</td>`;
+
+                for (let i = 0; i < dimensionN; i++) {
+                    const prop = fila.vector[i].toFixed(6);
+                    const pct = (fila.vector[i] * 100).toFixed(2);
+                    bodyHtml += `<td class="px-4 py-2.5 text-right whitespace-nowrap">${prop} <span class="text-slate-400 text-xs">(${pct}%)</span></td>`;
+                }
+
+                if (fila.error === null) {
+                    bodyHtml += `<td class="px-4 py-2.5 text-right text-slate-400 whitespace-nowrap">—</td>`;
+                } else {
+                    bodyHtml += `<td class="px-4 py-2.5 text-right whitespace-nowrap">${fila.error.toExponential(2)}</td>`;
+                }
+                bodyHtml += `</tr>`;
+            });
+
+            iterationsTbody.innerHTML = bodyHtml;
+        }
+
+        // Eventos principales
+        selectDim.addEventListener("change", (e) => {
+            inicializarModelo(parseInt(e.target.value, 10));
+        });
+
+        btnRestaurar.addEventListener("click", () => {
+            inicializarModelo(3);
+        });
+
+        // Arranque inicial al cargar la ventana
+        window.addEventListener("DOMContentLoaded", () => {
+            inicializarModelo(3);
+        });
+    </script>
+</body>
+</html>
